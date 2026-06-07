@@ -1,12 +1,9 @@
 const W = 540;
 const H = 720;
-const DURATION = 18000;
-const CROWD_COUNT = 520;
-
-const FLOW = { x: 0.62, y: 0.78 };
-const NORMAL = { x: -0.78, y: 0.62 };
-const FLOW_ANGLE = Math.atan2(FLOW.y, FLOW.x) - Math.PI / 2;
-const RED_ANGLE = FLOW_ANGLE + Math.PI;
+const WALKER_COUNT = 210;
+const ESCAPE_PERIOD = 5600;
+const BOX = { x: 66, y: 146, size: 408 };
+const INSIDE_PAD = 16;
 
 const walkers = [];
 let startedAt = 0;
@@ -27,25 +24,28 @@ function setup() {
 }
 
 function draw() {
-  const p = ((millis() - startedAt) % DURATION) / DURATION;
-  const t = easeInOutCubic(p);
+  const now = millis() - startedAt;
+  const cycle = floor(now / ESCAPE_PERIOD);
+  const cycleT = (now % ESCAPE_PERIOD) / ESCAPE_PERIOD;
+  const escaperIndex = (cycle * 47 + 19) % walkers.length;
 
   drawGround();
-  drawFlowTexture(p);
+  drawBox();
 
-  for (const walker of walkers) {
-    const pos = walkerPoint(walker, p);
-    const walk = sin(TWO_PI * (p * walker.stride + walker.phase));
-    drawWalker(pos.x, pos.y, walker.size, FLOW_ANGLE + walker.turn, walk, {
-      body: color(19, 22, 23, walker.alpha),
-      shadow: color(20, 20, 18, walker.shadowAlpha),
+  for (let i = 0; i < walkers.length; i++) {
+    if (i === escaperIndex) continue;
+    const walker = walkers[i];
+    const pose = trappedPose(walker, now);
+    const walk = sin(now * walker.stride + walker.phase);
+    drawWalker(pose.x, pose.y, walker.size, pose.angle, walk, {
+      body: color(18, 21, 22, walker.alpha),
+      shadow: color(18, 18, 16, walker.shadowAlpha),
       red: false
     });
   }
 
-  drawRedTrail(t);
-  drawRedWalker(t, p);
-  drawMiddleCover(t, p);
+  drawEscaper(walkers[escaperIndex], now, cycle, cycleT);
+  drawBoxRim();
   drawVignette();
 }
 
@@ -60,93 +60,173 @@ function keyPressed() {
 }
 
 function buildWalkers() {
-  const clusters = [
-    { x: 130, y: 120, sx: 82, sy: 90, n: 112 },
-    { x: 285, y: 130, sx: 86, sy: 96, n: 104 },
-    { x: 120, y: 285, sx: 82, sy: 118, n: 94 },
-    { x: 135, y: 610, sx: 92, sy: 78, n: 112 },
-    { x: 355, y: 610, sx: 62, sy: 78, n: 62 },
-    { x: 315, y: 355, sx: 120, sy: 170, n: 36 }
-  ];
-
-  for (const cluster of clusters) {
-    for (let i = 0; i < cluster.n; i++) {
-      addWalker(
-        cluster.x + randomGaussian() * cluster.sx,
-        cluster.y + randomGaussian() * cluster.sy,
-        random(0.86, 1.38)
-      );
-    }
-  }
-
-  while (walkers.length < CROWD_COUNT) {
-    addWalker(random(-10, W + 10), random(10, H - 10), random(0.72, 1.12));
+  for (let i = 0; i < WALKER_COUNT; i++) {
+    const modeRoll = random();
+    const mode = modeRoll < 0.42 ? "wander" : modeRoll < 0.72 ? "circle" : modeRoll < 0.9 ? "pace" : "pause";
+    walkers.push({
+      x: random(BOX.x + 34, BOX.x + BOX.size - 34),
+      y: random(BOX.y + 34, BOX.y + BOX.size - 34),
+      size: random(0.82, 1.42),
+      mode,
+      phase: random(TWO_PI),
+      stride: random(0.008, 0.014),
+      alpha: random(145, 225),
+      shadowAlpha: random(28, 62),
+      orbit: random(8, 28),
+      orbitSpeed: random(0.00045, 0.0012) * (random() < 0.5 ? -1 : 1),
+      paceAngle: random(TWO_PI),
+      paceLength: random(12, 38),
+      paceSpeed: random(0.0012, 0.0024),
+      wanderA: random(7, 26),
+      wanderB: random(8, 30),
+      turn: random(-0.4, 0.4)
+    });
   }
 }
 
-function addWalker(x, y, size) {
-  walkers.push({
-    baseX: x,
-    baseY: y,
-    size,
-    phase: random(),
-    stride: random(5.2, 8.4),
-    speed: random(0.55, 1.2),
-    laneDrift: random(-12, 12),
-    laneSpeed: random(0.6, 1.6),
-    turn: random(-0.22, 0.22),
-    alpha: random(135, 220),
-    shadowAlpha: random(34, 72)
+function trappedPose(walker, now) {
+  if (walker.mode === "circle") {
+    const theta = walker.phase + now * walker.orbitSpeed;
+    return confinePose({
+      x: walker.x + cos(theta) * walker.orbit,
+      y: walker.y + sin(theta) * walker.orbit,
+      angle: theta + HALF_PI + (walker.orbitSpeed < 0 ? PI : 0)
+    });
+  }
+
+  if (walker.mode === "pace") {
+    const u = sin(walker.phase + now * walker.paceSpeed);
+    const dir = u >= 0 ? walker.paceAngle : walker.paceAngle + PI;
+    return confinePose({
+      x: walker.x + cos(walker.paceAngle) * u * walker.paceLength,
+      y: walker.y + sin(walker.paceAngle) * u * walker.paceLength,
+      angle: dir + HALF_PI
+    });
+  }
+
+  if (walker.mode === "pause") {
+    const jx = sin(now * 0.0011 + walker.phase) * 2.4;
+    const jy = cos(now * 0.0013 + walker.phase) * 2.0;
+    return confinePose({
+      x: walker.x + jx,
+      y: walker.y + jy,
+      angle: walker.turn
+    });
+  }
+
+  const ax = sin(now * 0.0011 + walker.phase) * walker.wanderA;
+  const ay = cos(now * 0.0014 + walker.phase * 1.7) * walker.wanderB;
+  const vx = cos(now * 0.0011 + walker.phase) * walker.wanderA * 0.0011;
+  const vy = -sin(now * 0.0014 + walker.phase * 1.7) * walker.wanderB * 0.0014;
+  return confinePose({
+    x: walker.x + ax,
+    y: walker.y + ay,
+    angle: atan2(vy, vx) + HALF_PI
   });
 }
 
-function walkerPoint(walker, p) {
-  const step = (((p * walker.speed + walker.phase) % 1) - 0.5) * 56;
-  const lane = sin(TWO_PI * (p * walker.laneSpeed + walker.phase)) * walker.laneDrift;
+function confinePose(pose) {
   return {
-    x: walker.baseX + FLOW.x * step + NORMAL.x * lane,
-    y: walker.baseY + FLOW.y * step + NORMAL.y * lane
+    x: constrain(pose.x, BOX.x + INSIDE_PAD, BOX.x + BOX.size - INSIDE_PAD),
+    y: constrain(pose.y, BOX.y + INSIDE_PAD, BOX.y + BOX.size - INSIDE_PAD),
+    angle: pose.angle
   };
+}
+
+function drawEscaper(walker, now, cycle, cycleT) {
+  const startPose = trappedPose(walker, now);
+  const exit = exitTarget(cycle);
+  const hold = smoothstep(0, 0.18, cycleT);
+  const leave = smoothstep(0.18, 0.82, cycleT);
+  const fade = 1 - smoothstep(0.86, 1, cycleT);
+  const x = lerp(startPose.x, exit.x, leave);
+  const y = lerp(startPose.y, exit.y, leave);
+  const angle = atan2(exit.y - startPose.y, exit.x - startPose.x) + HALF_PI;
+  const walk = sin(now * 0.015 + walker.phase);
+  const alpha = (170 + hold * 80) * fade;
+
+  drawEscapeTrail(startPose, { x, y }, leave, fade);
+  drawWalker(x, y, 1.45, angle, walk, {
+    body: color(211, 45, 35, alpha),
+    shadow: color(201, 54, 45, 62 * fade),
+    red: true
+  });
+}
+
+function exitTarget(cycle) {
+  const edge = cycle % 4;
+  if (edge === 0) return { x: BOX.x + BOX.size + 70, y: BOX.y + BOX.size * 0.28 };
+  if (edge === 1) return { x: BOX.x + BOX.size * 0.24, y: BOX.y - 68 };
+  if (edge === 2) return { x: BOX.x - 68, y: BOX.y + BOX.size * 0.72 };
+  return { x: BOX.x + BOX.size * 0.78, y: BOX.y + BOX.size + 72 };
+}
+
+function drawEscapeTrail(from, to, amount, fade) {
+  const steps = 18;
+  noStroke();
+  for (let i = 0; i < steps; i++) {
+    const u = i / (steps - 1);
+    if (u > amount) break;
+    const x = lerp(from.x, to.x, u);
+    const y = lerp(from.y, to.y, u);
+    fill(210, 56, 46, 44 * u * fade);
+    ellipse(x + 5, y + 8, 5.5, 1.8);
+  }
 }
 
 function drawGround() {
   background(231, 229, 222);
 
   for (let y = 0; y < H; y += 5) {
-    stroke(214, 211, 202, 20);
+    stroke(213, 210, 201, 22);
     strokeWeight(1);
     line(0, y + noise(y * 0.03, frameCount * 0.002) * 2, W, y);
   }
 
-  for (let i = 0; i < 240; i++) {
+  for (let i = 0; i < 260; i++) {
     const x = (i * 47) % W;
     const y = (i * 83) % H;
-    stroke(120, 116, 106, 15);
+    stroke(120, 116, 106, 12);
     point(x + noise(i, frameCount * 0.003) * 8, y);
   }
 
   noStroke();
 }
 
-function drawFlowTexture(p) {
-  stroke(34, 33, 30, 13);
-  strokeWeight(1);
+function drawBox() {
+  noStroke();
+  fill(246, 244, 237, 142);
+  rect(BOX.x, BOX.y, BOX.size, BOX.size);
 
-  for (let i = -6; i < 26; i++) {
-    const lane = i * 34;
-    const offset = (p * 210 + i * 29) % 120;
-    for (let s = -120 + offset; s < 900; s += 120) {
-      const x = FLOW.x * s + NORMAL.x * lane;
-      const y = FLOW.y * s + NORMAL.y * lane - 40;
-      line(x, y, x + FLOW.x * 28, y + FLOW.y * 28);
-    }
+  stroke(52, 50, 45, 78);
+  strokeWeight(1.2);
+  noFill();
+  rect(BOX.x, BOX.y, BOX.size, BOX.size);
+
+  stroke(52, 50, 45, 20);
+  for (let i = 1; i < 7; i++) {
+    const x = BOX.x + (BOX.size / 7) * i;
+    const y = BOX.y + (BOX.size / 7) * i;
+    line(x, BOX.y, x, BOX.y + BOX.size);
+    line(BOX.x, y, BOX.x + BOX.size, y);
   }
+  noStroke();
+}
 
+function drawBoxRim() {
+  noFill();
+  stroke(22, 20, 18, 112);
+  strokeWeight(1.6);
+  rect(BOX.x, BOX.y, BOX.size, BOX.size);
+
+  stroke(255, 255, 250, 70);
+  strokeWeight(1);
+  rect(BOX.x + 3, BOX.y + 3, BOX.size - 6, BOX.size - 6);
   noStroke();
 }
 
 function drawWalker(x, y, s, angle, walk, palette) {
-  if (x < -28 || x > W + 28 || y < -28 || y > H + 28) return;
+  if (x < -36 || x > W + 36 || y < -36 || y > H + 36) return;
 
   drawWalkerShadow(x, y, s, palette.shadow, palette.red);
 
@@ -156,114 +236,40 @@ function drawWalker(x, y, s, angle, walk, palette) {
   scale(s);
 
   stroke(palette.body);
-  strokeWeight(palette.red ? 1.45 : 1.15);
+  strokeWeight(palette.red ? 1.55 : 1.1);
   strokeCap(ROUND);
   fill(palette.body);
 
-  const leg = 3.6;
-  const arm = 3.0;
-  const swing = walk * 1.9;
-
-  circle(0, -5.2, palette.red ? 2.8 : 2.25);
-  line(0, -3.1, 0, 3.4);
-  line(0, -0.5, -2.2, 2.5 + swing * 0.45);
-  line(0, -0.3, 2.1, 2.5 - swing * 0.45);
-  line(0, 3.2, -1.6, 3.2 + leg + swing);
-  line(0, 3.2, 1.7, 3.2 + leg - swing);
-  line(0, -1.6, -1.6, -1.4 + arm - swing * 0.55);
-  line(0, -1.6, 1.7, -1.4 + arm + swing * 0.55);
+  const swing = walk * 1.8;
+  circle(0, -5.2, palette.red ? 2.9 : 2.2);
+  line(0, -3.1, 0, 3.2);
+  line(0, -0.7, -2.0, 2.4 + swing * 0.45);
+  line(0, -0.5, 2.0, 2.4 - swing * 0.45);
+  line(0, 3.0, -1.55, 6.7 + swing);
+  line(0, 3.0, 1.55, 6.7 - swing);
+  line(0, -1.4, -1.55, 1.7 - swing * 0.55);
+  line(0, -1.4, 1.55, 1.7 + swing * 0.55);
 
   pop();
 }
 
 function drawWalkerShadow(x, y, s, c, red) {
   push();
-  translate(x + 7.5 * s, y + 9.5 * s);
+  translate(x + 6.8 * s, y + 8.6 * s);
   rotate(Math.PI / 4);
   noStroke();
   fill(c);
-  ellipse(0, 0, (red ? 15 : 11) * s, (red ? 3.8 : 2.8) * s);
+  ellipse(0, 0, (red ? 14 : 10) * s, (red ? 3.7 : 2.8) * s);
   pop();
-}
-
-function drawRedTrail(t) {
-  const steps = 38;
-  for (let i = 0; i < steps; i++) {
-    const u = i / (steps - 1);
-    if (u > t) break;
-    const pt = redPoint(u);
-    const a = map(i, 0, steps - 1, 8, 72) * smoothstep(0.05, 0.38, t);
-    noStroke();
-    fill(207, 45, 35, a);
-    ellipse(pt.x + 8, pt.y + 9, 7, 2.2);
-  }
-}
-
-function drawRedWalker(t, p) {
-  const pt = redPoint(t);
-  const buried = smoothstep(0.35, 0.5, t) * (1 - smoothstep(0.58, 0.76, t));
-  const reveal = smoothstep(0.74, 0.96, t);
-  const alpha = 245 - buried * 126 + reveal * 26;
-  const walk = sin(TWO_PI * (p * 7.4 + 0.15));
-  const size = 1.9 - buried * 0.22 + reveal * 0.1;
-
-  drawWalker(pt.x, pt.y, size, RED_ANGLE, walk, {
-    body: color(211, 45, 35, alpha),
-    shadow: color(201, 54, 45, 74),
-    red: true
-  });
-}
-
-function drawMiddleCover(t, p) {
-  const cover = smoothstep(0.34, 0.48, t) * (1 - smoothstep(0.58, 0.78, t));
-  if (cover <= 0.01) return;
-
-  const center = redPoint(t);
-  for (let i = 0; i < 86; i++) {
-    const lane = map(i % 17, 0, 16, -44, 48);
-    const stream = map(floor(i / 17), 0, 5, -64, 64) + sin(p * TWO_PI + i) * 8;
-    const x = center.x + FLOW.x * stream + NORMAL.x * lane;
-    const y = center.y + FLOW.y * stream + NORMAL.y * lane;
-    const walk = sin(TWO_PI * (p * (6 + (i % 5)) + i * 0.07));
-    drawWalker(x, y, 1.05 + (i % 4) * 0.08, FLOW_ANGLE + randomFixed(i) * 0.3, walk, {
-      body: color(12, 14, 15, 168 * cover),
-      shadow: color(13, 13, 12, 56 * cover),
-      red: false
-    });
-  }
-}
-
-function redPoint(t) {
-  const x0 = W * 0.78;
-  const y0 = H * 0.72;
-  const x1 = W * 0.62;
-  const y1 = H * 0.62;
-  const x2 = W * 0.38;
-  const y2 = H * 0.43;
-  const x3 = W * 0.2;
-  const y3 = H * 0.22;
-
-  return {
-    x: bezierPoint(x0, x1, x2, x3, t),
-    y: bezierPoint(y0, y1, y2, y3, t)
-  };
 }
 
 function drawVignette() {
   noFill();
-  for (let i = 0; i < 54; i++) {
-    stroke(26, 24, 20, i * 0.16);
+  for (let i = 0; i < 48; i++) {
+    stroke(26, 24, 20, i * 0.14);
     rect(i, i, W - i * 2, H - i * 2);
   }
   noStroke();
-}
-
-function randomFixed(i) {
-  return noise(i * 19.19) - 0.5;
-}
-
-function easeInOutCubic(x) {
-  return x < 0.5 ? 4 * x * x * x : 1 - pow(-2 * x + 2, 3) / 2;
 }
 
 function smoothstep(edge0, edge1, x) {
