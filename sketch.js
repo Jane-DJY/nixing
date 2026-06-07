@@ -1,14 +1,22 @@
-const W = 1080;
-const H = 1440;
-const DURATION = 16000;
-const CROWD_COUNT = 540;
+const W = 540;
+const H = 720;
+const DURATION = 17000;
+const CROWD_COUNT = 140;
+
+const FLOW = { x: 0.62, y: 0.78 };
+const NORMAL = { x: -0.78, y: 0.62 };
+const FLOW_ANGLE = Math.atan2(FLOW.y, FLOW.x) - Math.PI / 2;
+const SPAN = 2050;
 const crowd = [];
+const anchors = [];
 
 let startedAt = 0;
 
 function setup() {
   const canvas = createCanvas(W, H);
   canvas.parent("stage");
+  canvas.elt.style.setProperty("width", "100%", "important");
+  canvas.elt.style.setProperty("height", "100%", "important");
   pixelDensity(1);
   frameRate(60);
   noStroke();
@@ -17,29 +25,44 @@ function setup() {
   randomSeed(314159);
   noiseSeed(271828);
   buildCrowd();
+  buildAnchors();
 }
 
 function draw() {
   const elapsed = (millis() - startedAt) % DURATION;
   const p = elapsed / DURATION;
-  const eased = easeInOutCubic(p);
+  const t = easeInOutCubic(p);
 
   drawPaper();
-  drawFlowField(p);
-  drawRedTrace(eased);
+  drawDiagonalFlow(p);
+  drawRedTrace(t);
 
-  for (const person of crowd) {
-    const crowdPhase = (p + person.phase) % 1;
-    const x = ((person.baseX + crowdPhase * person.speed * W) % (W + 260)) - 130;
-    const y = person.baseY + sin(TWO_PI * (p * person.wobbleSpeed + person.phase)) * person.wobble;
-    const scale = person.size * (0.88 + 0.12 * sin(TWO_PI * (p * 2 + person.phase)));
-    const midCover = middleCover(person.baseY, eased);
-    const alpha = 128 + person.depth * 96 + midCover * 36;
-    drawPerson(x, y, scale, color(15, 15, 13, alpha), 1, p + person.phase);
+  for (const person of anchors) {
+    const drift = sin(TWO_PI * (p * person.wobbleSpeed + person.phase)) * person.wobble;
+    drawCloakPerson(person.x + FLOW.x * drift, person.y + FLOW.y * drift, person.size, color(15, 15, 14, person.alpha), {
+      angle: FLOW_ANGLE + person.tilt,
+      variant: person.variant,
+      grain: person.grain,
+      glow: false
+    });
   }
 
-  drawRedPerson(eased, p);
-  drawForegroundCrowd(p, eased);
+  for (const person of crowd) {
+    const pos = crowdPoint(person, p);
+    const depth = constrain(map(pos.y, 20, H - 60, 0.72, 1.36), 0.62, 1.46);
+    const midCover = middleCover(pos, t);
+    const alpha = 118 + person.depth * 106 + midCover * 26;
+    const scale = person.size * depth * (0.96 + 0.035 * sin(TWO_PI * (p * 1.8 + person.phase)));
+    drawCloakPerson(pos.x, pos.y, scale, color(16, 16, 15, alpha), {
+      angle: FLOW_ANGLE + person.tilt,
+      variant: person.variant,
+      grain: person.grain,
+      glow: false
+    });
+  }
+
+  drawRedPerson(t, p);
+  drawForegroundCrowd(p, t);
   drawVignette();
 }
 
@@ -53,49 +76,87 @@ function keyPressed() {
   }
 }
 
+function buildAnchors() {
+  const columns = 8;
+  const rows = 10;
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < columns; col++) {
+      const offset = (row % 2) * (W / columns) * 0.45;
+      anchors.push({
+        x: map(col, 0, columns - 1, -34, W + 34) + offset + random(-20, 20),
+        y: map(row, 0, rows - 1, -36, H + 36) + random(-24, 24),
+        size: random(0.28, 0.56) * map(row, 0, rows - 1, 0.82, 1.25),
+        phase: random(),
+        wobble: random(6, 18),
+        wobbleSpeed: random(0.32, 0.72),
+        tilt: random(-0.06, 0.06),
+        variant: floor(random(4)),
+        grain: random(1000),
+        alpha: random(64, 132)
+      });
+    }
+  }
+}
+
 function buildCrowd() {
   for (let i = 0; i < CROWD_COUNT; i++) {
-    const band = random();
-    const y = map(pow(band, 0.8), 0, 1, 110, H - 130);
-    const centerWeight = 1 - abs((y - H * 0.52) / (H * 0.48));
+    const columns = 20;
+    const col = i % columns;
+    const row = floor(i / columns);
+    const rows = ceil(CROWD_COUNT / columns);
     crowd.push({
-      baseX: random(-130, W + 130),
-      baseY: y + random(-18, 18),
-      speed: random(0.58, 1.18),
-      size: random(0.72, 1.24) * map(y, 90, H - 80, 0.8, 1.35),
+      baseX: map(col, 0, columns - 1, -70, W + 70) + random(-44, 44),
+      baseY: map(row, 0, rows - 1, -92, H + 92) + random(-52, 52),
       phase: random(),
-      wobble: random(1, 8) * centerWeight,
-      wobbleSpeed: random(0.8, 1.9),
-      depth: random(0.15, 1)
+      speed: random(0.44, 0.86),
+      size: random(0.36, 0.82),
+      drift: random(-22, 22),
+      wobble: random(3, 16),
+      wobbleSpeed: random(0.8, 2.1),
+      tilt: random(-0.08, 0.08),
+      depth: random(0.15, 1),
+      variant: floor(random(4)),
+      grain: random(1000)
     });
   }
 }
 
-function drawPaper() {
-  background(239, 238, 232);
+function crowdPoint(person, p) {
+  const travel = (((p * person.speed + person.phase) % 1) - 0.5) * 190;
+  const drift = sin(TWO_PI * (p * person.wobbleSpeed + person.phase)) * person.wobble;
+  return {
+    x: person.baseX + FLOW.x * travel + NORMAL.x * drift + person.drift,
+    y: person.baseY + FLOW.y * travel + NORMAL.y * drift
+  };
+}
 
-  for (let y = 0; y < H; y += 3) {
-    const shade = 232 + noise(y * 0.008, frameCount * 0.002) * 14;
-    stroke(shade, shade - 1, shade - 8, 22);
+function drawPaper() {
+  background(231, 231, 226);
+
+  for (let y = 0; y < H; y += 6) {
+    const shade = 222 + noise(y * 0.008, frameCount * 0.002) * 16;
+    stroke(shade, shade, shade - 5, 28);
     line(0, y, W, y);
   }
 
   noStroke();
-  fill(254, 250, 240, 54);
-  rect(42, 42, W - 84, H - 84);
+  fill(248, 248, 243, 42);
+  rect(48, 48, W - 96, H - 96);
 }
 
-function drawFlowField(p) {
-  stroke(20, 20, 18, 24);
+function drawDiagonalFlow(p) {
+  stroke(24, 24, 23, 18);
   strokeWeight(2);
 
-  for (let i = 0; i < 34; i++) {
-    const y = 96 + i * 37 + sin(p * TWO_PI + i) * 8;
-    const offset = (p * 460 + i * 61) % 170;
-    for (let x = -180 + offset; x < W + 180; x += 170) {
-      line(x - 48, y, x + 54, y);
-      line(x + 54, y, x + 34, y - 10);
-      line(x + 54, y, x + 34, y + 10);
+  for (let i = -16; i < 34; i++) {
+    const lane = i * 52 + sin(p * TWO_PI + i) * 7;
+    const offset = (p * 500 + i * 73) % 190;
+    for (let s = -300 + offset; s < SPAN - 120; s += 190) {
+      const x1 = -170 + FLOW.x * s + NORMAL.x * lane;
+      const y1 = -190 + FLOW.y * s + NORMAL.y * lane;
+      const x2 = x1 + FLOW.x * 96;
+      const y2 = y1 + FLOW.y * 96;
+      line(x1, y1, x2, y2);
     }
   }
 
@@ -103,80 +164,121 @@ function drawFlowField(p) {
 }
 
 function drawRedTrace(t) {
-  const steps = 70;
+  const steps = 84;
   for (let i = 0; i < steps; i++) {
     const u = i / (steps - 1);
     if (u > t) break;
 
     const pt = redPoint(u);
-    const alpha = map(i, 0, steps - 1, 8, 128) * smoothstep(0.05, 0.95, t);
-    fill(202, 28, 35, alpha);
-    circle(pt.x, pt.y, map(i, 0, steps - 1, 5, 18));
+    const local = smoothstep(0.02, 0.35, t) * map(i, 0, steps - 1, 0.1, 1);
+    fill(205, 35, 29, 82 * local);
+    ellipse(pt.x, pt.y + 16, 22 * local, 8 * local);
   }
 }
 
 function drawRedPerson(t, p) {
   const pt = redPoint(t);
-  const buried = smoothstep(0.32, 0.56, t) * (1 - smoothstep(0.62, 0.78, t));
+  const buried = smoothstep(0.34, 0.51, t) * (1 - smoothstep(0.56, 0.75, t));
   const reveal = smoothstep(0.72, 0.96, t);
-  const scale = 1.55 - buried * 0.28 + reveal * 0.35;
-  const alpha = 245 - buried * 150 + reveal * 84;
+  const scale = 1.18 - buried * 0.22 + reveal * 0.16;
+  const alpha = 255 - buried * 145 + reveal * 32;
 
-  push();
-  translate(pt.x, pt.y);
-  rotate(map(sin(p * TWO_PI), -1, 1, -0.08, 0.08));
-  drawPerson(0, 0, scale, color(206, 26, 35, alpha), -1, p);
-  pop();
+  drawCloakPerson(pt.x, pt.y, scale, color(211, 38, 30, alpha), {
+    angle: FLOW_ANGLE + PI + map(sin(p * TWO_PI), -1, 1, -0.035, 0.035),
+    variant: 1,
+    grain: 999,
+    glow: true
+  });
 }
 
 function drawForegroundCrowd(p, t) {
-  const cover = smoothstep(0.32, 0.46, t) * (1 - smoothstep(0.58, 0.76, t));
+  const cover = smoothstep(0.34, 0.48, t) * (1 - smoothstep(0.58, 0.78, t));
   if (cover <= 0.01) return;
 
-  for (let i = 0; i < 160; i++) {
-    const lane = i % 20;
-    const row = floor(i / 20);
-    const x = ((i * 97 + p * 980) % (W + 180)) - 90;
-    const y = H * 0.43 + lane * 15 + sin(row + p * 9) * 8;
-    const sc = 1.04 + (lane / 20) * 0.55;
-    drawPerson(x, y, sc, color(10, 10, 9, 72 * cover), 1, p + i * 0.01);
+  const center = redPoint(0.5);
+  for (let i = 0; i < 138; i++) {
+    const lane = map(i % 23, 0, 22, -215, 215);
+    const stream = map(floor(i / 23), 0, 5, -130, 170) + ((p * 520 + i * 17) % 170);
+    const x = center.x + FLOW.x * stream + NORMAL.x * lane;
+    const y = center.y + FLOW.y * stream + NORMAL.y * lane;
+    const sc = 0.72 + (i % 23) * 0.01;
+    drawCloakPerson(x, y, sc, color(10, 10, 9, 80 * cover), {
+      angle: FLOW_ANGLE + randomFixed(i) * 0.07,
+      variant: i % 4,
+      grain: i * 7,
+      glow: false
+    });
   }
 }
 
-function drawPerson(x, y, s, c, dir, phase) {
+function drawCloakPerson(x, y, s, c, opts) {
   push();
   translate(x, y);
+  rotate(opts.angle);
   scale(s);
-  fill(c);
-  stroke(c);
-  strokeWeight(8);
-  strokeCap(ROUND);
 
-  const walk = sin(TWO_PI * phase * 6);
-  const lean = dir * 0.09;
-  rotate(lean);
-
-  noStroke();
-  circle(0, -25, 18);
-  stroke(c);
-  line(0, -13, dir * 4, 19);
-  line(dir * 4, -2, dir * 24, 8 + walk * 3);
-  line(dir * 3, 0, -dir * 18, 8 - walk * 3);
-  line(dir * 4, 19, dir * 21, 42 + walk * 6);
-  line(dir * 4, 19, -dir * 17, 42 - walk * 6);
+  drawShadow(c, opts.glow);
+  drawCloakBody(c, opts.variant);
+  drawCloakGrain(c, opts.grain);
 
   pop();
 }
 
+function drawShadow(c, glow) {
+  noStroke();
+  const shadowAlpha = glow ? 72 : 42;
+  fill(24, 22, 20, shadowAlpha);
+  ellipse(0, 62, glow ? 58 : 48, glow ? 18 : 13);
+}
+
+function drawCloakBody(c, variant) {
+  const h = [124, 142, 132, 150][variant] || 134;
+  const topY = -h * 0.48;
+  const baseY = h * 0.46;
+  const leftW = [31, 26, 35, 29][variant] || 30;
+  const rightW = [28, 33, 27, 38][variant] || 31;
+  const neck = [7, 9, 6, 8][variant] || 7;
+
+  noStroke();
+  fill(c);
+
+  beginShape();
+  vertex(-neck, topY + 14);
+  bezierVertex(-leftW * 0.9, topY + 26, -leftW * 1.1, baseY - 42, -leftW, baseY - 8);
+  bezierVertex(-leftW * 0.72, baseY - 2, -leftW * 0.34, baseY + 4, -12, baseY + 2);
+  bezierVertex(-7, baseY - 12, 7, baseY - 12, 12, baseY + 2);
+  bezierVertex(rightW * 0.44, baseY + 5, rightW * 0.8, baseY - 1, rightW, baseY - 9);
+  bezierVertex(rightW * 0.8, baseY - 56, rightW * 0.52, topY + 23, neck, topY + 13);
+  bezierVertex(4, topY + 2, -3, topY + 2, -neck, topY + 14);
+  endShape(CLOSE);
+
+  circle(1, topY - 4, 14);
+
+  if (variant === 2) {
+    triangle(-leftW * 0.5, topY + 18, -leftW * 1.35, baseY - 14, -leftW * 0.25, baseY - 4);
+  }
+
+  if (variant === 3) {
+    triangle(rightW * 0.38, topY + 22, rightW * 1.18, baseY - 5, rightW * 0.22, baseY - 8);
+  }
+
+  fill(red(c), green(c), blue(c), alpha(c) * 0.14);
+  ellipse(-6, topY + 36, leftW * 0.58, h * 0.48);
+}
+
+function drawCloakGrain(c, seed) {
+  noStroke();
+}
+
 function redPoint(t) {
-  const x0 = W + 96;
-  const y0 = H * 0.28;
-  const x1 = W * 0.74;
-  const y1 = H * 0.58;
-  const x2 = W * 0.31;
-  const y2 = H * 0.51;
-  const x3 = -84;
-  const y3 = H * 0.82;
+  const x0 = W * 0.82;
+  const y0 = H * 0.8;
+  const x1 = W * 0.78;
+  const y1 = H * 0.74;
+  const x2 = W * 0.34;
+  const y2 = H * 0.42;
+  const x3 = W * 0.1;
+  const y3 = H * 0.08;
 
   return {
     x: bezierPoint(x0, x1, x2, x3, t),
@@ -184,20 +286,24 @@ function redPoint(t) {
   };
 }
 
-function middleCover(y, t) {
-  const center = H * 0.53;
-  const band = 1 - constrain(abs(y - center) / 250, 0, 1);
-  return band * smoothstep(0.27, 0.48, t) * (1 - smoothstep(0.66, 0.82, t));
+function middleCover(pos, t) {
+  const redMid = redPoint(0.5);
+  const band = 1 - constrain(dist(pos.x, pos.y, redMid.x, redMid.y) / 330, 0, 1);
+  return band * smoothstep(0.28, 0.46, t) * (1 - smoothstep(0.62, 0.82, t));
 }
 
 function drawVignette() {
   noFill();
   for (let i = 0; i < 90; i++) {
-    stroke(27, 26, 22, i * 0.34);
+    stroke(30, 29, 27, i * 0.28);
     strokeWeight(2);
     rect(i, i, W - i * 2, H - i * 2);
   }
   noStroke();
+}
+
+function randomFixed(i) {
+  return noise(i * 19.19) - 0.5;
 }
 
 function easeInOutCubic(x) {
