@@ -1,9 +1,9 @@
 const W = 540;
 const H = 720;
-const WALKER_COUNT = 210;
-const ESCAPE_PERIOD = 5600;
-const BOX = { x: 66, y: 146, size: 408 };
-const INSIDE_PAD = 16;
+const WALKER_COUNT = 96;
+const ESCAPE_PERIOD = 15000;
+const RINK = { cx: W * 0.5, cy: H * 0.48, rx: 218, ry: 156 };
+const INSIDE_MARGIN = 16;
 
 const walkers = [];
 let startedAt = 0;
@@ -27,10 +27,10 @@ function draw() {
   const now = millis() - startedAt;
   const cycle = floor(now / ESCAPE_PERIOD);
   const cycleT = (now % ESCAPE_PERIOD) / ESCAPE_PERIOD;
-  const escaperIndex = (cycle * 47 + 19) % walkers.length;
+  const escaperIndex = (cycle * 37 + 11) % walkers.length;
 
-  drawGround();
-  drawBox();
+  drawCharcoalGround();
+  drawSoftRink();
 
   for (let i = 0; i < walkers.length; i++) {
     if (i === escaperIndex) continue;
@@ -38,14 +38,14 @@ function draw() {
     const pose = trappedPose(walker, now);
     const walk = sin(now * walker.stride + walker.phase);
     drawWalker(pose.x, pose.y, walker.size, pose.angle, walk, {
-      body: color(18, 21, 22, walker.alpha),
-      shadow: color(18, 18, 16, walker.shadowAlpha),
-      red: false
+      body: color(21, 23, 24, walker.alpha),
+      shadow: color(11, 12, 12, walker.shadowAlpha),
+      bold: false
     });
   }
 
   drawEscaper(walkers[escaperIndex], now, cycle, cycleT);
-  drawBoxRim();
+  drawRinkDust(now);
   drawVignette();
 }
 
@@ -61,27 +61,37 @@ function keyPressed() {
 
 function buildWalkers() {
   for (let i = 0; i < WALKER_COUNT; i++) {
+    const pt = randomPointInRink(INSIDE_MARGIN + 10);
     const modeRoll = random();
-    const mode = modeRoll < 0.42 ? "wander" : modeRoll < 0.72 ? "circle" : modeRoll < 0.9 ? "pace" : "pause";
+    const mode = modeRoll < 0.36 ? "wander" : modeRoll < 0.68 ? "circle" : modeRoll < 0.9 ? "pace" : "pause";
     walkers.push({
-      x: random(BOX.x + 34, BOX.x + BOX.size - 34),
-      y: random(BOX.y + 34, BOX.y + BOX.size - 34),
-      size: random(0.82, 1.42),
+      x: pt.x,
+      y: pt.y,
+      size: random(1.0, 1.55),
       mode,
       phase: random(TWO_PI),
-      stride: random(0.008, 0.014),
-      alpha: random(145, 225),
-      shadowAlpha: random(28, 62),
-      orbit: random(8, 28),
-      orbitSpeed: random(0.00045, 0.0012) * (random() < 0.5 ? -1 : 1),
+      stride: random(0.007, 0.013),
+      alpha: random(138, 215),
+      shadowAlpha: random(34, 72),
+      orbit: random(9, 32),
+      orbitSpeed: random(0.00038, 0.00105) * (random() < 0.5 ? -1 : 1),
       paceAngle: random(TWO_PI),
-      paceLength: random(12, 38),
-      paceSpeed: random(0.0012, 0.0024),
-      wanderA: random(7, 26),
-      wanderB: random(8, 30),
+      paceLength: random(13, 44),
+      paceSpeed: random(0.001, 0.0022),
+      wanderA: random(8, 30),
+      wanderB: random(7, 28),
       turn: random(-0.4, 0.4)
     });
   }
+}
+
+function randomPointInRink(margin) {
+  const a = random(TWO_PI);
+  const r = sqrt(random());
+  return {
+    x: RINK.cx + cos(a) * (RINK.rx - margin) * r,
+    y: RINK.cy + sin(a) * (RINK.ry - margin) * r
+  };
 }
 
 function trappedPose(walker, now) {
@@ -105,19 +115,17 @@ function trappedPose(walker, now) {
   }
 
   if (walker.mode === "pause") {
-    const jx = sin(now * 0.0011 + walker.phase) * 2.4;
-    const jy = cos(now * 0.0013 + walker.phase) * 2.0;
     return confinePose({
-      x: walker.x + jx,
-      y: walker.y + jy,
+      x: walker.x + sin(now * 0.0011 + walker.phase) * 2.2,
+      y: walker.y + cos(now * 0.0013 + walker.phase) * 1.8,
       angle: walker.turn
     });
   }
 
-  const ax = sin(now * 0.0011 + walker.phase) * walker.wanderA;
-  const ay = cos(now * 0.0014 + walker.phase * 1.7) * walker.wanderB;
-  const vx = cos(now * 0.0011 + walker.phase) * walker.wanderA * 0.0011;
-  const vy = -sin(now * 0.0014 + walker.phase * 1.7) * walker.wanderB * 0.0014;
+  const ax = sin(now * 0.001 + walker.phase) * walker.wanderA;
+  const ay = cos(now * 0.00135 + walker.phase * 1.7) * walker.wanderB;
+  const vx = cos(now * 0.001 + walker.phase) * walker.wanderA * 0.001;
+  const vy = -sin(now * 0.00135 + walker.phase * 1.7) * walker.wanderB * 0.00135;
   return confinePose({
     x: walker.x + ax,
     y: walker.y + ay,
@@ -126,109 +134,131 @@ function trappedPose(walker, now) {
 }
 
 function confinePose(pose) {
+  const rx = RINK.rx - INSIDE_MARGIN;
+  const ry = RINK.ry - INSIDE_MARGIN;
+  const dx = pose.x - RINK.cx;
+  const dy = pose.y - RINK.cy;
+  const d = sqrt((dx * dx) / (rx * rx) + (dy * dy) / (ry * ry));
+  if (d <= 1) return pose;
+
   return {
-    x: constrain(pose.x, BOX.x + INSIDE_PAD, BOX.x + BOX.size - INSIDE_PAD),
-    y: constrain(pose.y, BOX.y + INSIDE_PAD, BOX.y + BOX.size - INSIDE_PAD),
-    angle: pose.angle
+    x: RINK.cx + dx / d,
+    y: RINK.cy + dy / d,
+    angle: pose.angle + PI * 0.15
   };
 }
 
 function drawEscaper(walker, now, cycle, cycleT) {
   const startPose = trappedPose(walker, now);
   const exit = exitTarget(cycle);
-  const hold = smoothstep(0, 0.18, cycleT);
-  const leave = smoothstep(0.18, 0.82, cycleT);
-  const fade = 1 - smoothstep(0.86, 1, cycleT);
+  const leave = smoothstep(0.54, 0.92, cycleT);
+  const fade = 1 - smoothstep(0.98, 1, cycleT);
   const x = lerp(startPose.x, exit.x, leave);
   const y = lerp(startPose.y, exit.y, leave);
   const angle = atan2(exit.y - startPose.y, exit.x - startPose.x) + HALF_PI;
-  const walk = sin(now * 0.015 + walker.phase);
-  const alpha = (170 + hold * 80) * fade;
+  const walk = sin(now * 0.013 + walker.phase);
+  const alpha = (150 + 48 * smoothstep(0.48, 0.62, cycleT)) * fade;
 
   drawEscapeTrail(startPose, { x, y }, leave, fade);
-  drawWalker(x, y, 1.45, angle, walk, {
-    body: color(211, 45, 35, alpha),
-    shadow: color(201, 54, 45, 62 * fade),
-    red: true
+  drawWalker(x, y, 1.44, angle, walk, {
+    body: color(15, 17, 18, alpha),
+    shadow: color(7, 8, 8, 68 * fade),
+    bold: true
   });
 }
 
 function exitTarget(cycle) {
-  const edge = cycle % 4;
-  if (edge === 0) return { x: BOX.x + BOX.size + 70, y: BOX.y + BOX.size * 0.28 };
-  if (edge === 1) return { x: BOX.x + BOX.size * 0.24, y: BOX.y - 68 };
-  if (edge === 2) return { x: BOX.x - 68, y: BOX.y + BOX.size * 0.72 };
-  return { x: BOX.x + BOX.size * 0.78, y: BOX.y + BOX.size + 72 };
+  const a = [-0.15, -1.5, 2.9, 1.35][cycle % 4];
+  return {
+    x: RINK.cx + cos(a) * (RINK.rx + 88),
+    y: RINK.cy + sin(a) * (RINK.ry + 72)
+  };
 }
 
 function drawEscapeTrail(from, to, amount, fade) {
-  const steps = 18;
   noStroke();
-  for (let i = 0; i < steps; i++) {
-    const u = i / (steps - 1);
+  for (let i = 0; i < 18; i++) {
+    const u = i / 17;
     if (u > amount) break;
     const x = lerp(from.x, to.x, u);
     const y = lerp(from.y, to.y, u);
-    fill(210, 56, 46, 44 * u * fade);
+    fill(18, 19, 19, 24 * u * fade);
     ellipse(x + 5, y + 8, 5.5, 1.8);
   }
 }
 
-function drawGround() {
-  background(231, 229, 222);
+function drawCharcoalGround() {
+  background(34, 39, 42);
 
-  for (let y = 0; y < H; y += 5) {
-    stroke(213, 210, 201, 22);
+  for (let y = 0; y < H; y += 4) {
+    const n = noise(y * 0.018, frameCount * 0.002);
+    stroke(60 + n * 25, 65 + n * 20, 67 + n * 18, 28);
+    line(0, y, W, y + n * 2);
+  }
+
+  for (let i = 0; i < 420; i++) {
+    stroke(235, 235, 225, 14);
+    point((i * 37) % W, (i * 91 + frameCount * 0.12) % H);
+  }
+  noStroke();
+}
+
+function drawSoftRink() {
+  noStroke();
+
+  for (let i = 28; i >= 0; i--) {
+    const k = i / 28;
+    fill(222, 224, 219, 5 + (1 - k) * 9);
+    ellipse(
+      RINK.cx + noise(i * 1.7) * 8 - 4,
+      RINK.cy + noise(i * 2.1) * 6 - 3,
+      RINK.rx * 2 + i * 10,
+      RINK.ry * 2 + i * 7
+    );
+  }
+
+  fill(225, 226, 221, 232);
+  ellipse(RINK.cx, RINK.cy, RINK.rx * 2, RINK.ry * 2);
+
+  for (let i = 0; i < 40; i++) {
+    const a = i / 39;
+    stroke(10, 12, 14, 17 * (1 - a));
+    strokeWeight(5 + i * 0.7);
+    noFill();
+    ellipse(
+      RINK.cx + noise(i * 2.3, frameCount * 0.004) * 10 - 5,
+      RINK.cy + noise(i * 3.1, frameCount * 0.004) * 8 - 4,
+      RINK.rx * 2 + i * 4.4,
+      RINK.ry * 2 + i * 3.2
+    );
+  }
+
+  for (let i = 0; i < 46; i++) {
+    stroke(186, 188, 183, 16);
     strokeWeight(1);
-    line(0, y + noise(y * 0.03, frameCount * 0.002) * 2, W, y);
-  }
-
-  for (let i = 0; i < 260; i++) {
-    const x = (i * 47) % W;
-    const y = (i * 83) % H;
-    stroke(120, 116, 106, 12);
-    point(x + noise(i, frameCount * 0.003) * 8, y);
-  }
-
-  noStroke();
-}
-
-function drawBox() {
-  noStroke();
-  fill(246, 244, 237, 142);
-  rect(BOX.x, BOX.y, BOX.size, BOX.size);
-
-  stroke(52, 50, 45, 78);
-  strokeWeight(1.2);
-  noFill();
-  rect(BOX.x, BOX.y, BOX.size, BOX.size);
-
-  stroke(52, 50, 45, 20);
-  for (let i = 1; i < 7; i++) {
-    const x = BOX.x + (BOX.size / 7) * i;
-    const y = BOX.y + (BOX.size / 7) * i;
-    line(x, BOX.y, x, BOX.y + BOX.size);
-    line(BOX.x, y, BOX.x + BOX.size, y);
+    const y = RINK.cy - RINK.ry + i * ((RINK.ry * 2) / 46);
+    const half = RINK.rx * sqrt(max(0, 1 - sq((y - RINK.cy) / RINK.ry)));
+    line(RINK.cx - half * 0.92, y, RINK.cx + half * 0.92, y + sin(i) * 1.2);
   }
   noStroke();
 }
 
-function drawBoxRim() {
-  noFill();
-  stroke(22, 20, 18, 112);
-  strokeWeight(1.6);
-  rect(BOX.x, BOX.y, BOX.size, BOX.size);
-
-  stroke(255, 255, 250, 70);
-  strokeWeight(1);
-  rect(BOX.x + 3, BOX.y + 3, BOX.size - 6, BOX.size - 6);
+function drawRinkDust(now) {
   noStroke();
+  for (let i = 0; i < 90; i++) {
+    const a = i * 1.618 + now * 0.00003;
+    const r = sqrt((i * 37) % 100 / 100);
+    const x = RINK.cx + cos(a) * RINK.rx * r;
+    const y = RINK.cy + sin(a) * RINK.ry * r;
+    fill(245, 245, 238, 16);
+    ellipse(x, y, 1.2, 0.8);
+  }
 }
 
 function drawWalker(x, y, s, angle, walk, palette) {
   if (x < -36 || x > W + 36 || y < -36 || y > H + 36) return;
 
-  drawWalkerShadow(x, y, s, palette.shadow, palette.red);
+  drawWalkerShadow(x, y, s, palette.shadow, palette.bold);
 
   push();
   translate(x, y);
@@ -236,12 +266,12 @@ function drawWalker(x, y, s, angle, walk, palette) {
   scale(s);
 
   stroke(palette.body);
-  strokeWeight(palette.red ? 1.55 : 1.1);
+  strokeWeight(palette.bold ? 1.5 : 1.05);
   strokeCap(ROUND);
   fill(palette.body);
 
-  const swing = walk * 1.8;
-  circle(0, -5.2, palette.red ? 2.9 : 2.2);
+  const swing = walk * 1.75;
+  circle(0, -5.2, palette.bold ? 2.8 : 2.15);
   line(0, -3.1, 0, 3.2);
   line(0, -0.7, -2.0, 2.4 + swing * 0.45);
   line(0, -0.5, 2.0, 2.4 - swing * 0.45);
@@ -253,23 +283,24 @@ function drawWalker(x, y, s, angle, walk, palette) {
   pop();
 }
 
-function drawWalkerShadow(x, y, s, c, red) {
+function drawWalkerShadow(x, y, s, c, bold) {
   push();
-  translate(x + 6.8 * s, y + 8.6 * s);
+  translate(x + 7.4 * s, y + 8.4 * s);
   rotate(Math.PI / 4);
   noStroke();
   fill(c);
-  ellipse(0, 0, (red ? 14 : 10) * s, (red ? 3.7 : 2.8) * s);
+  ellipse(0, 0, (bold ? 14 : 10) * s, (bold ? 3.6 : 2.7) * s);
   pop();
 }
 
 function drawVignette() {
-  noFill();
-  for (let i = 0; i < 48; i++) {
-    stroke(26, 24, 20, i * 0.14);
-    rect(i, i, W - i * 2, H - i * 2);
-  }
   noStroke();
+  for (let i = 0; i < 220; i++) {
+    const x = (i * 31) % W;
+    const y = (i * 67) % H;
+    fill(0, 0, 0, 8);
+    ellipse(x, y, 1.2, 1.2);
+  }
 }
 
 function smoothstep(edge0, edge1, x) {
