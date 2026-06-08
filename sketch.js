@@ -1,10 +1,11 @@
 const W = 540;
 const H = 720;
-const FISH_COUNT = 88;
+const FISH_COUNT = 136;
 const ESCAPE_PERIOD = 18000;
-const CAVE = { cx: W * 0.5, cy: H * 0.52, rx: 238, ry: 318 };
+const CAVE = { cx: W * 0.52, cy: H * 0.34, rx: 306, ry: 430 };
 
 const fishes = [];
+const brushMarks = [];
 let startedAt = 0;
 
 function setup() {
@@ -19,6 +20,7 @@ function setup() {
   randomSeed(314159);
   noiseSeed(271828);
   buildFishes();
+  buildBrushMarks();
   startedAt = millis();
 }
 
@@ -30,7 +32,7 @@ function draw() {
 
   drawWaterGround(now);
   drawCave(now);
-  drawCurrentLines(now);
+  drawVortexBrushes(now);
 
   for (let i = 0; i < fishes.length; i++) {
     const fish = fishes[i];
@@ -56,32 +58,66 @@ function keyPressed() {
 
 function buildFishes() {
   for (let i = 0; i < FISH_COUNT; i++) {
+    const outerBias = pow(random(), 0.32);
     fishes.push({
-      radius: random(0.16, 0.9),
+      radius: lerp(0.26, 1.03, outerBias),
       theta: random(TWO_PI),
-      angularSpeed: random(0.00023, 0.00072),
-      radialWobble: random(0.006, 0.028),
-      wobbleSpeed: random(0.00022, 0.00062),
-      size: random(0.82, 1.7),
-      bodyLen: random(18, 36),
-      bodyWide: random(3.3, 7.2),
+      angularSpeed: random(0.00015, 0.00042),
+      radialWobble: random(0.004, 0.022),
+      wobbleSpeed: random(0.00016, 0.00044),
+      size: random(0.82, 1.28),
+      bodyLen: random(34, 82),
+      bodyWide: random(4.2, 10.4),
       phase: random(TWO_PI),
-      alpha: random(112, 220),
+      alpha: random(42, 152),
       hue: randomBlue(),
-      tail: random(0.75, 1.25)
+      tail: random(0.65, 1.25),
+      smear: random(0.45, 1.2),
+      seed: random(1000)
+    });
+  }
+}
+
+function buildBrushMarks() {
+  for (let i = 0; i < 360; i++) {
+    const r = pow(random(), 0.26);
+    const radius = random(0.1, 1.1) * r + 0.02;
+    const outer = constrain(map(radius, 0.18, 1.1, 0, 1), 0, 1);
+    brushMarks.push({
+      radius,
+      theta: random(TWO_PI),
+      speed: random(0.000035, 0.00016),
+      len: random(0.08, 0.24) + outer * random(0.16, 0.48),
+      weight: random(2.2, 7.5) + outer * random(2, 9),
+      alpha: random(8, 34) + outer * random(8, 34),
+      offset: random(-0.018, 0.018),
+      hue: randomBrushBlue(),
+      phase: random(TWO_PI)
     });
   }
 }
 
 function randomBlue() {
   const palette = [
-    [8, 55, 112],
-    [11, 82, 145],
-    [16, 111, 174],
-    [34, 147, 190],
-    [65, 188, 202],
-    [91, 211, 212],
-    [4, 44, 96]
+    [116, 226, 236],
+    [84, 203, 225],
+    [55, 168, 211],
+    [30, 132, 196],
+    [19, 91, 164],
+    [170, 240, 244],
+    [10, 70, 142]
+  ];
+  return random(palette);
+}
+
+function randomBrushBlue() {
+  const palette = [
+    [185, 244, 250],
+    [130, 226, 242],
+    [77, 190, 226],
+    [24, 142, 205],
+    [9, 79, 161],
+    [4, 43, 120]
   ];
   return random(palette);
 }
@@ -115,10 +151,10 @@ function drawEscapingFish(fish, now, cycle, cycleT) {
 }
 
 function exitTarget(cycle) {
-  const a = [-0.2, -1.35, 2.75, 1.35][cycle % 4];
+  const a = [-0.15, -1.2, 2.72, 1.4][cycle % 4];
   return {
-    x: CAVE.cx + cos(a) * (CAVE.rx + 46),
-    y: CAVE.cy + sin(a) * (CAVE.ry + 38)
+    x: CAVE.cx + cos(a) * (CAVE.rx + 78),
+    y: CAVE.cy + sin(a) * (CAVE.ry + 68)
   };
 }
 
@@ -127,31 +163,41 @@ function drawEscapeTrail(from, to, amount, fade) {
   for (let i = 0; i < 22; i++) {
     const u = i / 21;
     if (u > amount) break;
-    fill(42, 108, 139, 14 * u * fade);
-    ellipse(lerp(from.x, to.x, u), lerp(from.y, to.y, u), 5, 1.4);
+    fill(132, 230, 238, 10 * u * fade);
+    ellipse(lerp(from.x, to.x, u), lerp(from.y, to.y, u), 12, 2.2);
   }
 }
 
 function drawWaterGround(now) {
-  background(9, 43, 91);
+  background(6, 28, 88);
 
   noStroke();
-  for (let i = 0; i < 52; i++) {
-    const k = i / 51;
-    fill(82, 204, 225, 3.2 * (1 - k));
-    ellipse(CAVE.cx, CAVE.cy, 150 + i * 18, 190 + i * 25);
+  for (let i = 92; i >= 0; i--) {
+    const k = i / 92;
+    fill(
+      lerp(210, 10, k),
+      lerp(247, 86, k),
+      lerp(250, 178, k),
+      7.4
+    );
+    ellipse(
+      CAVE.cx + sin(i * 0.28) * 8,
+      CAVE.cy + cos(i * 0.23) * 6,
+      76 + i * 8.4,
+      88 + i * 10.2
+    );
   }
 
-  for (let i = 0; i < 42; i++) {
-    const k = i / 41;
-    fill(3, 23, 72, 5 * k);
-    ellipse(W * 0.08, H * 0.42, 200 + i * 18, 420 + i * 18);
+  for (let i = 0; i < 70; i++) {
+    const k = i / 69;
+    fill(1, 15, 68, 2.3 * k);
+    ellipse(CAVE.cx, CAVE.cy + 92, 360 + i * 12, 520 + i * 14);
   }
 
-  for (let y = 0; y < H; y += 3) {
+  for (let y = 0; y < H; y += 2) {
     const n = noise(y * 0.014, now * 0.00006);
-    stroke(22 + n * 28, 91 + n * 42, 143 + n * 35, 24);
-    line(0, y, W, y + n * 2.2);
+    stroke(40 + n * 34, 142 + n * 52, 194 + n * 44, 13);
+    line(0, y, W, y + n * 2.0);
   }
 
   noStroke();
@@ -160,91 +206,100 @@ function drawWaterGround(now) {
 function drawCave(now) {
   noStroke();
 
-  for (let i = 60; i >= 0; i--) {
-    const k = i / 60;
+  for (let i = 72; i >= 0; i--) {
+    const k = i / 72;
     const wobbleX = noise(i * 0.72, now * 0.00004) * 16 - 8;
     const wobbleY = noise(i * 0.93, now * 0.00004) * 18 - 9;
-    fill(2, 31, 86, 2.6 + k * 3.4);
-    ellipse(CAVE.cx + wobbleX, CAVE.cy + wobbleY, CAVE.rx * 2 + i * 8, CAVE.ry * 2 + i * 8);
+    fill(0, 20, 82, 0.55 + k * 1.55);
+    ellipse(CAVE.cx + wobbleX, CAVE.cy + wobbleY, CAVE.rx * 1.8 + i * 9, CAVE.ry * 1.8 + i * 10);
   }
 
-  for (let i = 56; i >= 0; i--) {
-    const k = i / 56;
-    fill(112, 204, 226, 3.1 * (1 - k));
+  for (let i = 64; i >= 0; i--) {
+    const k = i / 64;
+    fill(127, 222, 238, 3.8 * (1 - k));
     ellipse(
       CAVE.cx + noise(i * 1.31, now * 0.00005) * 12 - 6,
       CAVE.cy + noise(i * 1.77, now * 0.00005) * 16 - 8,
-      96 + i * 8.6,
-      132 + i * 9.4
+      86 + i * 7.2,
+      98 + i * 8.2
     );
   }
 
-  for (let i = 34; i >= 0; i--) {
-    const k = i / 34;
-    fill(229, 248, 238, 3.8 * (1 - k));
+  for (let i = 42; i >= 0; i--) {
+    const k = i / 42;
+    fill(220, 249, 250, 4.8 * (1 - k));
     ellipse(
       CAVE.cx + noise(i * 2.4, now * 0.00005) * 9 - 4.5,
       CAVE.cy + noise(i * 2.9, now * 0.00005) * 12 - 6,
-      42 + i * 6.8,
-      56 + i * 7.4
+      34 + i * 5.2,
+      38 + i * 5.7
     );
   }
 
-  for (let i = 0; i < 68; i++) {
-    const y = CAVE.cy - CAVE.ry + i * ((CAVE.ry * 2) / 68);
-    const half = CAVE.rx * sqrt(max(0, 1 - sq((y - CAVE.cy) / CAVE.ry)));
-    stroke(95, 178, 198, 8);
-    strokeWeight(1);
-    line(CAVE.cx - half * 0.86, y, CAVE.cx + half * 0.9, y + sin(i * 0.9) * 1.4);
+  for (let i = 0; i < 96; i++) {
+    const a = i * 0.42 + now * 0.000035;
+    const r = map(i, 0, 95, 0.18, 1.08);
+    noFill();
+    stroke(188, 239, 246, 8);
+    strokeWeight(map(i, 0, 95, 0.8, 2.4));
+    arc(CAVE.cx, CAVE.cy, CAVE.rx * 2 * r, CAVE.ry * 2 * r, a, a + 0.08 + i * 0.002);
   }
   noStroke();
 }
 
-function drawCurrentLines(now) {
+function drawVortexBrushes(now) {
   noFill();
-  for (let i = 0; i < 16; i++) {
-    const r = map(i, 0, 15, 0.18, 0.94);
-    stroke(70, 176, 204, 4);
-    strokeWeight(1.6);
-    arc(
-      CAVE.cx,
-      CAVE.cy,
-      CAVE.rx * 2 * r,
-      CAVE.ry * 2 * r,
-      now * 0.00008 + i * 0.22,
-      now * 0.00008 + i * 0.22 + 0.8
-    );
+  strokeCap(ROUND);
+
+  for (const mark of brushMarks) {
+    const t = mark.theta + now * mark.speed + sin(now * 0.00022 + mark.phase) * 0.025;
+    const r = mark.radius + sin(now * 0.00012 + mark.phase) * mark.offset;
+    const w = CAVE.rx * 2 * r;
+    const h = CAVE.ry * 2 * r;
+    const c = mark.hue;
+    const centerFade = constrain(map(r, 0.12, 0.55, 0.42, 1), 0.42, 1);
+    const bottomBoost = constrain(map(CAVE.cy + sin(t) * CAVE.ry * r, H * 0.4, H, 0.75, 1.36), 0.75, 1.36);
+
+    stroke(c[0], c[1], c[2], mark.alpha * centerFade * bottomBoost);
+    strokeWeight(mark.weight);
+    arc(CAVE.cx, CAVE.cy, w, h, t, t + mark.len);
+
+    stroke(225, 252, 253, mark.alpha * 0.24 * bottomBoost);
+    strokeWeight(max(1, mark.weight * 0.32));
+    arc(CAVE.cx + mark.weight * 0.14, CAVE.cy - mark.weight * 0.1, w, h, t + mark.len * 0.08, t + mark.len * 0.72);
   }
+
+  strokeCap(SQUARE);
   noStroke();
 }
 
 function drawWaterGrain(now) {
   noStroke();
-  for (let i = 0; i < 1600; i++) {
+  for (let i = 0; i < 2200; i++) {
     const x = (i * 37 + noise(i, now * 0.0001) * 9) % W;
     const y = (i * 91 + now * 0.012) % H;
     const d = dist(x, y, CAVE.cx, CAVE.cy);
-    const centerBoost = constrain(map(d, 260, 0, 0, 15), 0, 15);
-    fill(230, 252, 244, (i % 7 === 0 ? 21 : 7) + centerBoost);
-    ellipse(x, y, i % 11 === 0 ? 1.8 : 0.9, i % 11 === 0 ? 1.3 : 0.7);
+    const centerBoost = constrain(map(d, 230, 0, 0, 13), 0, 13);
+    fill(228, 252, 252, (i % 7 === 0 ? 18 : 5) + centerBoost);
+    ellipse(x, y, i % 11 === 0 ? 1.6 : 0.8, i % 11 === 0 ? 1.2 : 0.6);
   }
 
-  for (let i = 0; i < 160; i++) {
+  for (let i = 0; i < 210; i++) {
     const a = i * 2.399;
     const r = sqrt((i * 47) % 100 / 100);
-    const x = CAVE.cx + cos(a) * CAVE.rx * 0.82 * r;
-    const y = CAVE.cy + sin(a) * CAVE.ry * 0.72 * r;
-    fill(245, 252, 238, 18);
-    ellipse(x, y, i % 5 === 0 ? 2.2 : 1.1, i % 5 === 0 ? 1.8 : 0.9);
+    const x = CAVE.cx + cos(a) * CAVE.rx * 0.72 * r;
+    const y = CAVE.cy + sin(a) * CAVE.ry * 0.56 * r;
+    fill(241, 255, 252, 14);
+    ellipse(x, y, i % 5 === 0 ? 2 : 1, i % 5 === 0 ? 1.6 : 0.8);
   }
 
-  for (let i = 0; i < 220; i++) {
+  for (let i = 0; i < 320; i++) {
     const a = i * 2.17 + noise(i * 0.2) * 0.8;
     const r = sqrt((i * 61) % 100 / 100);
-    const x = CAVE.cx + cos(a) * 112 * r;
-    const y = CAVE.cy + sin(a) * 135 * r;
-    fill(240, 252, 238, i % 6 === 0 ? 28 : 13);
-    ellipse(x, y, i % 8 === 0 ? 2.4 : 1.1, i % 8 === 0 ? 1.8 : 0.9);
+    const x = CAVE.cx + cos(a) * 128 * r;
+    const y = CAVE.cy + sin(a) * 118 * r;
+    fill(239, 254, 252, i % 6 === 0 ? 20 : 9);
+    ellipse(x, y, i % 8 === 0 ? 2.1 : 0.9, i % 8 === 0 ? 1.5 : 0.7);
   }
 }
 
@@ -256,36 +311,38 @@ function drawFishAt(pose, fish, now, alphaScale) {
 
   const wag = sin(now * 0.011 + fish.phase) * fish.tail;
   const fishAlpha = fish.alpha * alphaScale;
-  const c = color(fish.hue[0], fish.hue[1], fish.hue[2], fishAlpha);
-  const light = color(fish.hue[0] + 36, fish.hue[1] + 28, fish.hue[2] + 20, fishAlpha * 0.28);
+  const len = fish.bodyLen;
+  const wide = fish.bodyWide;
+  const c = fish.hue;
 
   noStroke();
-  fill(c);
+
+  for (let i = 5; i >= 0; i--) {
+    const spread = i / 4;
+    const jitter = (noise(fish.seed, i, now * 0.00008) - 0.5) * wide * 0.55;
+    fill(c[0], c[1], c[2], fishAlpha * (0.085 + i * 0.025));
+    beginShape();
+    vertex(-len * (0.54 + spread * 0.36), jitter);
+    bezierVertex(-len * 0.36, -wide * (0.66 + spread * 0.1), len * 0.16, -wide * (0.62 + spread * 0.08), len * (0.5 + spread * 0.02), jitter * 0.18);
+    bezierVertex(len * 0.12, wide * (0.64 + spread * 0.08), -len * 0.34, wide * (0.7 + spread * 0.1), -len * (0.54 + spread * 0.36), jitter);
+    endShape(CLOSE);
+  }
+
+  fill(min(c[0] + 84, 240), min(c[1] + 46, 255), min(c[2] + 32, 255), fishAlpha * 0.2);
+  ellipse(len * 0.02, -wide * 0.14, len * 0.78, wide * 0.58);
+
+  fill(c[0], c[1], c[2], fishAlpha * 0.22);
   beginShape();
-  vertex(-fish.bodyLen * 0.52, 0);
-  bezierVertex(-fish.bodyLen * 0.25, -fish.bodyWide, fish.bodyLen * 0.26, -fish.bodyWide * 0.82, fish.bodyLen * 0.52, 0);
-  bezierVertex(fish.bodyLen * 0.26, fish.bodyWide * 0.82, -fish.bodyLen * 0.25, fish.bodyWide, -fish.bodyLen * 0.52, 0);
+  vertex(-len * 0.34, 0);
+  bezierVertex(-len * 0.78, -wide * (0.3 + wag * 0.05), -len * (1.0 + fish.smear * 0.22), -wide * 0.08, -len * (1.26 + fish.smear * 0.3), 0);
+  bezierVertex(-len * (1.0 + fish.smear * 0.22), wide * 0.1, -len * 0.74, wide * (0.32 - wag * 0.05), -len * 0.34, 0);
   endShape(CLOSE);
 
-  fill(light);
-  ellipse(fish.bodyLen * 0.08, -fish.bodyWide * 0.18, fish.bodyLen * 0.48, fish.bodyWide * 0.42);
-
-  fill(2, 21, 48, fishAlpha * 0.78);
-  circle(fish.bodyLen * 0.31, -fish.bodyWide * 0.18, max(1.2, fish.bodyWide * 0.28));
-
-  fill(fish.hue[0], fish.hue[1], fish.hue[2], fishAlpha * 0.74);
-  triangle(
-    -fish.bodyLen * 0.5,
-    0,
-    -fish.bodyLen * 0.84,
-    -fish.bodyWide * (0.9 + wag * 0.18),
-    -fish.bodyLen * 0.76,
-    fish.bodyWide * (0.88 - wag * 0.18)
-  );
-
-  fill(fish.hue[0], fish.hue[1], fish.hue[2], fishAlpha * 0.28);
-  triangle(-fish.bodyLen * 0.05, 0, fish.bodyLen * 0.15, -fish.bodyWide * 1.15, fish.bodyLen * 0.26, -fish.bodyWide * 0.15);
-  triangle(-fish.bodyLen * 0.12, fish.bodyWide * 0.12, fish.bodyLen * 0.08, fish.bodyWide * 1.0, fish.bodyLen * 0.18, fish.bodyWide * 0.18);
+  strokeCap(ROUND);
+  stroke(min(c[0] + 78, 235), min(c[1] + 52, 255), min(c[2] + 34, 255), fishAlpha * 0.26);
+  strokeWeight(max(1.1, wide * 0.18));
+  line(-len * 0.24, -wide * 0.16, len * 0.4, -wide * 0.18);
+  noStroke();
 
   pop();
 }
