@@ -138,8 +138,8 @@ function drawWaterGround(now) {
   noStroke();
   for (let i = 0; i < 52; i++) {
     const k = i / 51;
-    fill(71, 198, 224, 4.2 * (1 - k));
-    ellipse(W * 0.8, H * 0.5, 170 + i * 19, 210 + i * 26);
+    fill(82, 204, 225, 3.2 * (1 - k));
+    ellipse(CAVE.cx, CAVE.cy, 150 + i * 18, 190 + i * 25);
   }
 
   for (let i = 0; i < 42; i++) {
@@ -168,10 +168,26 @@ function drawCave(now) {
     ellipse(CAVE.cx + wobbleX, CAVE.cy + wobbleY, CAVE.rx * 2 + i * 8, CAVE.ry * 2 + i * 8);
   }
 
-  for (let i = 0; i < 38; i++) {
-    const k = i / 37;
-    fill(116, 202, 218, 3.2 * (1 - k));
-    ellipse(W * 0.72, H * 0.54, CAVE.rx * 1.2 + i * 8, CAVE.ry * 1.05 + i * 10);
+  for (let i = 56; i >= 0; i--) {
+    const k = i / 56;
+    fill(112, 204, 226, 3.1 * (1 - k));
+    ellipse(
+      CAVE.cx + noise(i * 1.31, now * 0.00005) * 12 - 6,
+      CAVE.cy + noise(i * 1.77, now * 0.00005) * 16 - 8,
+      96 + i * 8.6,
+      132 + i * 9.4
+    );
+  }
+
+  for (let i = 34; i >= 0; i--) {
+    const k = i / 34;
+    fill(229, 248, 238, 3.8 * (1 - k));
+    ellipse(
+      CAVE.cx + noise(i * 2.4, now * 0.00005) * 9 - 4.5,
+      CAVE.cy + noise(i * 2.9, now * 0.00005) * 12 - 6,
+      42 + i * 6.8,
+      56 + i * 7.4
+    );
   }
 
   for (let i = 0; i < 68; i++) {
@@ -204,11 +220,31 @@ function drawCurrentLines(now) {
 
 function drawWaterGrain(now) {
   noStroke();
-  for (let i = 0; i < 900; i++) {
+  for (let i = 0; i < 1600; i++) {
     const x = (i * 37 + noise(i, now * 0.0001) * 9) % W;
     const y = (i * 91 + now * 0.012) % H;
-    fill(230, 252, 244, i % 7 === 0 ? 24 : 9);
-    ellipse(x, y, i % 11 === 0 ? 1.8 : 1, i % 11 === 0 ? 1.3 : 0.8);
+    const d = dist(x, y, CAVE.cx, CAVE.cy);
+    const centerBoost = constrain(map(d, 260, 0, 0, 15), 0, 15);
+    fill(230, 252, 244, (i % 7 === 0 ? 21 : 7) + centerBoost);
+    ellipse(x, y, i % 11 === 0 ? 1.8 : 0.9, i % 11 === 0 ? 1.3 : 0.7);
+  }
+
+  for (let i = 0; i < 160; i++) {
+    const a = i * 2.399;
+    const r = sqrt((i * 47) % 100 / 100);
+    const x = CAVE.cx + cos(a) * CAVE.rx * 0.82 * r;
+    const y = CAVE.cy + sin(a) * CAVE.ry * 0.72 * r;
+    fill(245, 252, 238, 18);
+    ellipse(x, y, i % 5 === 0 ? 2.2 : 1.1, i % 5 === 0 ? 1.8 : 0.9);
+  }
+
+  for (let i = 0; i < 220; i++) {
+    const a = i * 2.17 + noise(i * 0.2) * 0.8;
+    const r = sqrt((i * 61) % 100 / 100);
+    const x = CAVE.cx + cos(a) * 112 * r;
+    const y = CAVE.cy + sin(a) * 135 * r;
+    fill(240, 252, 238, i % 6 === 0 ? 28 : 13);
+    ellipse(x, y, i % 8 === 0 ? 2.4 : 1.1, i % 8 === 0 ? 1.8 : 0.9);
   }
 }
 
