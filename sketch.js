@@ -1,6 +1,6 @@
 const W = 540;
 const H = 720;
-const WALKER_COUNT = 96;
+const WALKER_COUNT = 58;
 const ESCAPE_PERIOD = 15000;
 const RINK = { cx: W * 0.5, cy: H * 0.48, rx: 218, ry: 156 };
 const INSIDE_MARGIN = 16;
@@ -38,8 +38,10 @@ function draw() {
     const pose = trappedPose(walker, now);
     const walk = sin(now * walker.stride + walker.phase);
     drawWalker(pose.x, pose.y, walker.size, pose.angle, walk, {
-      body: color(21, 23, 24, walker.alpha),
-      shadow: color(11, 12, 12, walker.shadowAlpha),
+      shirt: walker.shirt,
+      pants: color(22, 24, 25, 150),
+      skin: color(38, 32, 26, 155),
+      shadow: color(16, 15, 13, walker.shadowAlpha),
       bold: false
     });
   }
@@ -67,12 +69,13 @@ function buildWalkers() {
     walkers.push({
       x: pt.x,
       y: pt.y,
-      size: random(1.0, 1.55),
+      size: random(1.1, 1.72),
       mode,
       phase: random(TWO_PI),
       stride: random(0.007, 0.013),
       alpha: random(138, 215),
-      shadowAlpha: random(34, 72),
+      shadowAlpha: random(10, 22),
+      shirt: randomShirt(),
       orbit: random(9, 32),
       orbitSpeed: random(0.00038, 0.00105) * (random() < 0.5 ? -1 : 1),
       paceAngle: random(TWO_PI),
@@ -157,12 +160,14 @@ function drawEscaper(walker, now, cycle, cycleT) {
   const y = lerp(startPose.y, exit.y, leave);
   const angle = atan2(exit.y - startPose.y, exit.x - startPose.x) + HALF_PI;
   const walk = sin(now * 0.013 + walker.phase);
-  const alpha = (150 + 48 * smoothstep(0.48, 0.62, cycleT)) * fade;
+  const alpha = (172 + 34 * smoothstep(0.48, 0.62, cycleT)) * fade;
 
   drawEscapeTrail(startPose, { x, y }, leave, fade);
   drawWalker(x, y, 1.44, angle, walk, {
-    body: color(15, 17, 18, alpha),
-    shadow: color(7, 8, 8, 68 * fade),
+    shirt: color(red(walker.shirt), green(walker.shirt), blue(walker.shirt), alpha),
+    pants: color(20, 22, 23, 150 * fade),
+    skin: color(38, 32, 26, 160 * fade),
+    shadow: color(8, 8, 7, 18 * fade),
     bold: true
   });
 }
@@ -182,17 +187,17 @@ function drawEscapeTrail(from, to, amount, fade) {
     if (u > amount) break;
     const x = lerp(from.x, to.x, u);
     const y = lerp(from.y, to.y, u);
-    fill(18, 19, 19, 24 * u * fade);
+    fill(18, 19, 19, 12 * u * fade);
     ellipse(x + 5, y + 8, 5.5, 1.8);
   }
 }
 
 function drawCharcoalGround() {
-  background(34, 39, 42);
+  background(46, 48, 44);
 
   for (let y = 0; y < H; y += 4) {
     const n = noise(y * 0.018, frameCount * 0.002);
-    stroke(60 + n * 25, 65 + n * 20, 67 + n * 18, 28);
+    stroke(76 + n * 20, 74 + n * 18, 68 + n * 16, 22);
     line(0, y, W, y + n * 2);
   }
 
@@ -208,7 +213,7 @@ function drawSoftRink() {
 
   for (let i = 28; i >= 0; i--) {
     const k = i / 28;
-    fill(222, 224, 219, 5 + (1 - k) * 9);
+    fill(226, 220, 205, 5 + (1 - k) * 8);
     ellipse(
       RINK.cx + noise(i * 1.7) * 8 - 4,
       RINK.cy + noise(i * 2.1) * 6 - 3,
@@ -217,12 +222,12 @@ function drawSoftRink() {
     );
   }
 
-  fill(225, 226, 221, 232);
+  fill(229, 224, 211, 238);
   ellipse(RINK.cx, RINK.cy, RINK.rx * 2, RINK.ry * 2);
 
   for (let i = 0; i < 40; i++) {
     const a = i / 39;
-    stroke(10, 12, 14, 17 * (1 - a));
+    stroke(14, 14, 13, 15 * (1 - a));
     strokeWeight(5 + i * 0.7);
     noFill();
     ellipse(
@@ -234,7 +239,7 @@ function drawSoftRink() {
   }
 
   for (let i = 0; i < 46; i++) {
-    stroke(186, 188, 183, 16);
+    stroke(192, 184, 168, 14);
     strokeWeight(1);
     const y = RINK.cy - RINK.ry + i * ((RINK.ry * 2) / 46);
     const half = RINK.rx * sqrt(max(0, 1 - sq((y - RINK.cy) / RINK.ry)));
@@ -250,7 +255,7 @@ function drawRinkDust(now) {
     const r = sqrt((i * 37) % 100 / 100);
     const x = RINK.cx + cos(a) * RINK.rx * r;
     const y = RINK.cy + sin(a) * RINK.ry * r;
-    fill(245, 245, 238, 16);
+    fill(245, 238, 222, 14);
     ellipse(x, y, 1.2, 0.8);
   }
 }
@@ -265,20 +270,28 @@ function drawWalker(x, y, s, angle, walk, palette) {
   rotate(angle);
   scale(s);
 
-  stroke(palette.body);
-  strokeWeight(palette.bold ? 1.5 : 1.05);
+  strokeWeight(palette.bold ? 1.55 : 1.05);
   strokeCap(ROUND);
-  fill(palette.body);
 
-  const swing = walk * 1.75;
-  circle(0, -5.2, palette.bold ? 2.8 : 2.15);
-  line(0, -3.1, 0, 3.2);
-  line(0, -0.7, -2.0, 2.4 + swing * 0.45);
-  line(0, -0.5, 2.0, 2.4 - swing * 0.45);
-  line(0, 3.0, -1.55, 6.7 + swing);
-  line(0, 3.0, 1.55, 6.7 - swing);
-  line(0, -1.4, -1.55, 1.7 - swing * 0.55);
-  line(0, -1.4, 1.55, 1.7 + swing * 0.55);
+  const swing = walk * 1.45;
+  stroke(palette.skin);
+  fill(palette.skin);
+  circle(0, -5.1, palette.bold ? 3.0 : 2.35);
+
+  stroke(palette.shirt);
+  fill(palette.shirt);
+  strokeWeight(0.8);
+  ellipse(0, -0.7, palette.bold ? 5.0 : 4.2, palette.bold ? 6.8 : 5.9);
+
+  stroke(palette.pants);
+  strokeWeight(palette.bold ? 1.4 : 0.95);
+  line(-0.55, 2.1, -1.55, 5.9 + swing);
+  line(0.55, 2.1, 1.55, 5.9 - swing);
+
+  stroke(palette.skin);
+  strokeWeight(palette.bold ? 1.15 : 0.82);
+  line(-2.0, -1.1, -3.4, 1.3 - swing * 0.3);
+  line(2.0, -1.1, 3.35, 1.3 + swing * 0.3);
 
   pop();
 }
@@ -289,8 +302,25 @@ function drawWalkerShadow(x, y, s, c, bold) {
   rotate(Math.PI / 4);
   noStroke();
   fill(c);
-  ellipse(0, 0, (bold ? 14 : 10) * s, (bold ? 3.6 : 2.7) * s);
+  ellipse(0, 0, (bold ? 10 : 7) * s, (bold ? 2.5 : 1.8) * s);
   pop();
+}
+
+function randomShirt() {
+  const palette = [
+    [238, 219, 74],
+    [44, 165, 182],
+    [74, 128, 217],
+    [232, 88, 66],
+    [78, 176, 101],
+    [236, 154, 62],
+    [233, 224, 207],
+    [159, 104, 184],
+    [95, 190, 165],
+    [220, 116, 149]
+  ];
+  const picked = random(palette);
+  return color(picked[0], picked[1], picked[2], random(170, 225));
 }
 
 function drawVignette() {
